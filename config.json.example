@@ -1,0 +1,11 @@
+{
+	"email": "EMAIL",
+	"password": "PASSWORD",
+	"dbFile": "./MugenBot.db",
+	"commandPrefix": "@mb",
+	"darkSkyApi": "",
+	"riotApiKey": "",
+	"imgurAuth": "",
+	"forecastKey": "",
+	"googleMapsKey": "",
+}

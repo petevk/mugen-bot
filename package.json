@@ -1,0 +1,16 @@
+{
+	"name": "mugen-bot",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/petevk/mugen-bot"
+	},
+	"license": "MIT",
+	"version": "0.0.1",
+	"description": "Pogo v2",
+	"dependencies": {
+		"facebook-chat-api": "latest"
+	},
+	"engines": {
+		"node": "7.0"
+	}
+}
