@@ -92,3 +92,6 @@ ENV/
 
 # Rope project settings
 .ropeproject
+
+# Config private info
+config.yml
