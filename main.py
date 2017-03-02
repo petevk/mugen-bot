@@ -1,15 +1,20 @@
-import discord
 import asyncio
+import discord
 import logging
-import yaml
 import sys
+import yaml
 from MessageHandlers import WaiverWire
-ALL_HANDLERS = [ WaiverWire ]
+from waiver_redis import WaiverRedis
 
 with open("config.yml") as file:
   config = yaml.load(file, Loader=yaml.Loader)
 
 client = discord.Client()
+waiver_redis = WaiverRedis(host='localhost', port=6379, db=0)
+
+waiver_wire_handler = WaiverWire(client, waiver_redis)
+
+ALL_HANDLERS = [ waiver_wire_handler ]
 
 def setup_logging(filename):
   logger = logging.getLogger("discord")
@@ -27,8 +32,7 @@ async def on_ready():
 
 @client.event
 async def on_message(message):
-  for handler_class in ALL_HANDLERS:
-    handler = handler_class(client)
+  for handler in ALL_HANDLERS:
     if handler.match(message):
       await handler.handle(message)
 

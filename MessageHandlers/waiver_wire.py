@@ -1,20 +1,16 @@
-import discord
 import asyncio
-import requests
-import redis
-from distutils import util
+import discord
+from decorators import admin_only, private_chat_only, public_chat_only
 from message_handler import MessageHandler
-from utils import admin_only
+from utils import is_int, valid_boolean, strtobool
 
 class WaiverWire(MessageHandler):
-  def __init__(self, client):
+  def __init__(self, client, redis):
     self.client = client
-    self.redis = redis.StrictRedis(host='localhost', port=6379, db=0)
-    self.players = get_all_players()
+    self.redis = redis
 
   def match(self, message):
     return message.content.startswith("/waiver")
-
 
   async def handle(self, message):
     response = "Hmm... I couldn't understand your command. If you want the help method, type `/waiver help`"
@@ -25,15 +21,15 @@ class WaiverWire(MessageHandler):
     elif command.startswith("admin help"):
       response = ADMIN_HELP_MESSAGE
     elif command.startswith("show player"):
-      response = format_players(self.players)
+      response = format_players(self.redis.get_all_players())
     elif command.startswith("add"):
-      response = await self.add_player(command[4:], message)
-    elif command == "show":
-      response = format_waiver_list(self.get_waivers(message.author))
+      response = await self.add_player(message, command[4:])
+    elif command.startswith("show order"):
+      response = format_waiver_order(self.redis.get_waiver_order())
+    elif command.startswith("show"):
+      response = await self.show_waivers(message)
     elif command.startswith("delete"):
       response = await self.delete_player_waivers(message)
-    elif command.startswith("show order"):
-      response = format_waiver_order(self.get_waiver_order())
     elif command.startswith("set order"):
       response = await self.set_waiver_order(message)
     elif command.startswith("reset"):
@@ -44,13 +40,15 @@ class WaiverWire(MessageHandler):
     if response:
       await self.client.send_message(message.channel, response)
 
-  async def add_player(self, player, message):
+  @private_chat_only
+  async def add_player(self, message, player):
+    all_players = self.redis.get_all_players()
     try:
-      player_index = [p.lower() for p in self.players].index(player.lower())
+      player_index = [p.lower() for p in all_players].index(player.lower())
     except:
       return CANNOT_FIND_PLAYER_MESSAGE.format(player)
-    actual_player = self.players[player_index]
-    current_waivers = self.get_waivers(message.author)
+    actual_player = all_players[player_index]
+    current_waivers = self.redis.get_waivers(message.author.name)
 
     if actual_player in current_waivers:
       return "You already requested `{}`, dummy.".format(actual_player)
@@ -58,7 +56,7 @@ class WaiverWire(MessageHandler):
     response = "Adding `{}`.".format(actual_player)
     if not current_waivers:
       await self.client.send_message(message.channel, response)
-      self.set_waivers(message.author, [actual_player])
+      self.redis.set_waivers(message.author.name, [actual_player])
     else:
       formatted_waiver_list = format_waiver_list(current_waivers)
       response += WAIVER_SHUFFLE_ORDER_MESSAGE + formatted_waiver_list
@@ -70,40 +68,34 @@ class WaiverWire(MessageHandler):
         await self.client.send_message(message.channel, response)
         order = -1
       else:
-        order = min(len(current_waivers) - 1, parse_order(msg_order.content))
+        order = min(len(current_waivers), parse_order(msg_order.content))
 
       if order < 0:
         current_waivers.append(actual_player)
       else:
         current_waivers.insert(order, actual_player)
-      self.set_waivers(message.author, current_waivers)
+      self.redis.set_waivers(message.author.name, current_waivers)
       await self.client.send_message(message.channel, "Done. Type `/waiver show` to see the updated list.")
 
+  @private_chat_only
+  async def show_waivers(self, message):
+    return format_waiver_list(self.redis.get_waivers(message.author.name))
+
+  @private_chat_only
   async def delete_player_waivers(self, message):
-    if not self.get_waivers(message.author):
+    if not self.redis.get_waivers(message.author.name):
       return "You don't have any waivers to delete!"
     await self.client.send_message(message.channel, "Are you sure you want to delete all of your waivers?")
     msg_confirm = await self.client.wait_for_message(author=message.author, timeout=30, check=valid_boolean)
     if not msg_confirm:
       return "You didn't tell me if you wanted to delete the waivers. Aborting..."
-    if util.strtobool(msg_confirm.content):
-      self.redis.hdel("waivers", message.author.name)
+    if strtobool(msg_confirm.content):
+      self.redis.delete_waivers(message.author.name)
       return "Deleted all waivers."
     return "Alright, I won't delete anything."
 
-  def get_waivers(self, author):
-    result = self.redis.hget("waivers", author.name)
-    return result.decode().split(":") if result else []
-
-  def set_waivers(self, author, waivers):
-    value = ":".join(waivers)
-    self.redis.hmset("waivers", { author.name: value })
-
-  def get_waiver_order(self):
-    order = self.redis.lrange("waiverOrder", 0, -1)
-    return [s.decode() for s in order]
-
   @admin_only
+  @public_chat_only
   async def set_waiver_order(self, message):
     raw_order =  message.content[18:]
     raw_user_ids = list(filter(None, raw_order.split(" ")))
@@ -112,25 +104,26 @@ class WaiverWire(MessageHandler):
       return "Whoops, you didn't give me enough names. There should be 8."
     id_to_name = { u.id: u.name for u in self.client.get_all_members()}
     waiver_order = [id_to_name[user_id] for user_id in raw_user_ids]
-    self.redis.delete("waiverOrder")
-    self.redis.rpush("waiverOrder", *waiver_order)
-    return format_waiver_order(self.get_waiver_order())
+    self.redis.set_waiver_order(waiver_order)
+    return format_waiver_order(self.redis.get_waiver_order())
 
   @admin_only
+  @public_chat_only
   async def reset_waivers(self, message):
     await self.client.send_message(message.channel, "Are you sure you want to reset all the waivers?")
     msg_confirm = await self.client.wait_for_message(author=message.author, timeout=30, check=valid_boolean)
     if not msg_confirm:
       return "You didn't tell me if you wanted to delete the waivers. Aborting..."
-    if util.strtobool(msg_confirm.content):
-      self.redis.delete("waivers")
+    if strtobool(msg_confirm.content):
+      self.redis.delete_waivers()
       return "All waivers are reset."
     return "Alright, I won't delete anything."
 
   @admin_only
+  @public_chat_only
   async def calculate_waivers(self, message):
-    all_waivers = self.get_all_waivers()
-    order = self.get_waiver_order()
+    all_waivers = self.redis.get_waivers()
+    order = self.redis.get_waiver_order()
     waivers = { name.decode(): picks.decode().split(":") for name, picks in all_waivers.items() }
     taken_players = {}
     while any(waivers.values()):
@@ -146,9 +139,6 @@ class WaiverWire(MessageHandler):
     if not results:
       return "Nobody did waivers this week :cry:"
     return "Waiver results:\n\n{}".format(results)
-
-  def get_all_waivers(self):
-    return self.redis.hgetall("waivers")
 
 HELP_MESSAGE = """
 Welcome to the FantasyLCS waiver wire! Here are the commands you can do:
@@ -182,12 +172,6 @@ Here's your current waiver order:
 {}
 """
 
-def get_all_players():
-  response = requests.get("http://fantasy.na.lolesports.com/en-US/api/season/14")
-  players = sorted([d["name"] for d in response.json()["proPlayers"]], key=str.lower)
-  teams = sorted([d["name"] for d in response.json()["proTeams"]], key=str.lower)
-  return players + teams
-
 def format_players(players):
   formatted_players = ", ".join(["`{}`".format(s) for s in players])
   return "Here are the players that I know about:\n\n{}".format(formatted_players)
@@ -211,17 +195,3 @@ def parse_order(message):
     return VALID_ORDER_MAPPINGS[message]
   order = int(message) - 1
   return order if order >= 0 else 0
-
-def is_int(s):
-  try:
-    int(s)
-    return True
-  except ValueError:
-    return False
-
-def valid_boolean(message):
-  try:
-    util.strtobool(message.content)
-    return True
-  except ValueError:
-    return False
