@@ -1,5 +1,7 @@
 # mugen-bot
 
+![mugen-bot](./mugen.png)
+
 To get running, first have python3 installed. Also, it must be at least Python 3.5 for some of the features included.
 
 Run `python --version` or `python3 --version` to find out the version you have. If it's < 3.5,
