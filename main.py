@@ -3,18 +3,22 @@ import discord
 import logging
 import sys
 import yaml
-from MessageHandlers import WaiverWire
-from waiver_redis import WaiverRedis
+from MessageHandlers import *
+from handler_clients.waiver_redis import WaiverRedis
+from handler_clients.riot_client import RiotClient
 
 with open("config.yml") as file:
   config = yaml.load(file, Loader=yaml.Loader)
 
 client = discord.Client()
+
 waiver_redis = WaiverRedis(host='localhost', port=6379, db=0)
+waiver_wire_handler = waiver_wire.WaiverWire(client, waiver_redis)
 
-waiver_wire_handler = WaiverWire(client, waiver_redis)
+riot_client = RiotClient(config["riot_api_key"])
+league_handler = league.LeagueHandler(client, riot_client)
 
-ALL_HANDLERS = [ waiver_wire_handler ]
+ALL_HANDLERS = [ waiver_wire_handler, league_handler ]
 
 def setup_logging(filename):
   logger = logging.getLogger("discord")

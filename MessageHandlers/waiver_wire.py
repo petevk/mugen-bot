@@ -1,10 +1,10 @@
 import asyncio
 import discord
 from decorators import admin_only, private_chat_only, public_chat_only
-from message_handler import MessageHandler
+from . import message_handler
 from utils import is_int, valid_boolean, strtobool
 
-class WaiverWire(MessageHandler):
+class WaiverWire(message_handler.MessageHandler):
   def __init__(self, client, redis):
     self.client = client
     self.redis = redis

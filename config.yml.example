@@ -1,2 +1,3 @@
 bot_token: put-your-bot-token-here
 log_file: discord.log
+riot_api_key: put-your-riot-api-key-here
