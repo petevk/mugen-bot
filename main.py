@@ -40,6 +40,12 @@ async def on_message(message):
     if handler.match(message):
       await handler.handle(message)
 
+@client.event
+async def on_member_update(before, after):
+  if after.game and after.game.name == "League of Legends":
+    channel = discord.utils.get(client.get_all_channels(), server__name="Mucho Bucho", name="general")
+    await client.send_message(channel, "{} wants to play League!".format(after.mention))
+
 if __name__ == "__main__":
   setup_logging(config["log_file"])
   client.run(config["bot_token"])
