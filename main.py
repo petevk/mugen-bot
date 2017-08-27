@@ -3,7 +3,7 @@ import discord
 import logging
 import sys
 import yaml
-from MessageHandlers import *
+from message_handlers import *
 from handler_clients.waiver_redis import WaiverRedis
 from handler_clients.riot_client import RiotClient
 
